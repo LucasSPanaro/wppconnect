@@ -460,8 +460,9 @@ export class SenderLayer extends ListenerLayer {
     to: string,
     base64: string,
     filename: string,
-    caption?: string
-  ): Promise<SendFileResult> {
+    caption?: string,
+    quotedMessageId?: string
+  ) {
     let mimeType = base64MimeType(base64);
 
     if (!mimeType) {
@@ -478,14 +479,28 @@ export class SenderLayer extends ListenerLayer {
     const type = 'FileFromBase64';
     const result = await evaluateAndReturn(
       this.page,
-      ({ to, base64, filename, caption, type }) => {
-        return WAPI.sendFile(base64, to, filename, caption, type);
-      },
-      { to, base64, filename, caption, type }
-    );
-    if (result['erro'] == true) {
-      throw result;
-    }
+      async ({
+        to,
+        base64,
+        filename,
+        caption,
+        type,
+        quotedMessageId,
+      }) => {
+        const result = await WPP.chat.sendFileMessage(to, base64, {
+          type,
+          filename,
+          caption,
+          quotedMsg: quotedMessageId,
+          waitForAck: true,
+        });
+        return {
+          ack: result.ack,
+          id: result.id,
+          sendMsgResult: await result.sendMsgResult,
+        };
+      }, { to, base64, filename, caption, type, quotedMessageId }
+    )
     return result;
   }
 
@@ -503,7 +518,7 @@ export class SenderLayer extends ListenerLayer {
     filename?: string,
     caption?: string
   ) {
-    return new Promise<SendFileResult>(async (resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       let base64 = await downloadFileToBase64(filePath),
         obj: { erro: boolean; to: string; text: string };
 
@@ -524,9 +539,9 @@ export class SenderLayer extends ListenerLayer {
         filename = path.basename(filePath);
       }
 
-      this.sendFileFromBase64(to, base64, filename, caption)
-        .then(resolve)
-        .catch(reject);
+      return this.sendFileFromBase64(to, base64, filename, caption)
+      .then(resolve)
+      .catch(reject);
     });
   }
 
